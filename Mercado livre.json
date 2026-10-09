@@ -1,0 +1,647 @@
+{
+  "name": "Mercado livre",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5f2b504c-acf7-4b37-a353-2fcd916660cb",
+              "leftValue": "={{ $json.orders_list }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {
+          "ignoreCase": false
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        208
+      ],
+      "id": "4a74dc07-0e0c-4b67-89a5-8d34858a94e4",
+      "name": "Há pendências"
+    },
+    {
+      "parameters": {
+        "operation": "pop",
+        "list": "orders_list",
+        "propertyName": "",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        656,
+        144
+      ],
+      "id": "8388fac3-ce33-4914-9ea9-b9216dfb293a",
+      "name": "Pegar ordem",
+      "credentials": {
+        "redis": {
+          "id": "0tr7eaNDVyRZU7kL",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/orders/{{ $json[\"\"] }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        880,
+        144
+      ],
+      "id": "d2a91843-b051-4044-819a-c53b3280fd0b",
+      "name": "Detalhes da compra",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "QuC3vN5wmybOEKlE",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/shipments/{{ $json.shipping.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-format-new",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1056,
+        144
+      ],
+      "id": "a10269d6-cc8a-4c35-8ca6-03f695182d69",
+      "name": "Detalhes de envio",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "QuC3vN5wmybOEKlE",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.mercadolibre.com/users/{{ $json.destination.receiver_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1424,
+        64
+      ],
+      "id": "5fc0aec5-a248-4a50-9a34-87019686762c",
+      "name": "Dados pessoais para NF",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "QuC3vN5wmybOEKlE",
+          "name": "Bearer Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const envio = $('Detalhes de envio').first().json;\nconst compra = $('Detalhes da compra').first().json;\nconst identificacao = $input.first().json;\n\nconst Client = {\n  name: envio.destination.receiver_name,\n  cpf: identificacao.identification.number,\n  address: {\n    CEP: identificacao.address.zip_code,\n    address: identificacao.address.address,\n    city: identificacao.address.city,\n    state: identificacao.address.state\n  }\n};\n\nconst item = compra.order_items[0];\n\nconst Items = {\n  name: item.item.title,\n  SKU: item.item.seller_sku,\n  quantity: item.quantity,\n  unit_price: item.unit_price\n};\n\nconst total = Number(Items.quantity) * Number(Items.unit_price);\n\nconst xml = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<nfeProc xmlns=\"http://www.portalfiscal.inf.br/nfe\" versao=\"4.00\">\n  <NFe xmlns=\"http://www.portalfiscal.inf.br/nfe\">\n    <infNFe Id=\"NFeMOCK${Date.now()}\" versao=\"4.00\">\n\n      <ide>\n        <cUF>41</cUF>\n        <cNF>12345678</cNF>\n        <natOp>Venda de mercadoria</natOp>\n        <mod>55</mod>\n        <serie>1</serie>\n        <nNF>999999</nNF>\n        <dhEmi>${new Date().toISOString()}</dhEmi>\n        <tpNF>1</tpNF>\n        <idDest>1</idDest>\n        <cMunFG>4106902</cMunFG>\n        <tpImp>1</tpImp>\n        <tpEmis>1</tpEmis>\n        <cDV>0</cDV>\n        <tpAmb>2</tpAmb>\n        <finNFe>1</finNFe>\n        <indFinal>1</indFinal>\n        <indPres>2</indPres>\n        <procEmi>0</procEmi>\n        <verProc>MOCK-N8N-1.0</verProc>\n      </ide>\n\n      <emit>\n        <CNPJ>00000000000000</CNPJ>\n        <xNome>EMPRESA TESTE HOMOLOGACAO</xNome>\n        <enderEmit>\n          <xLgr>Rua Teste</xLgr>\n          <nro>100</nro>\n          <xBairro>Centro</xBairro>\n          <cMun>4106902</cMun>\n          <xMun>Curitiba</xMun>\n          <UF>PR</UF>\n          <CEP>80000000</CEP>\n          <cPais>1058</cPais>\n          <xPais>BRASIL</xPais>\n        </enderEmit>\n        <IE>ISENTO</IE>\n        <CRT>3</CRT>\n      </emit>\n\n      <dest>\n        <CPF>${Client.cpf}</CPF>\n        <xNome>${Client.name}</xNome>\n        <enderDest>\n          <xLgr>${Client.address.address}</xLgr>\n          <nro>SN</nro>\n          <xBairro>NAO INFORMADO</xBairro>\n          <cMun>4106902</cMun>\n          <xMun>${Client.address.city}</xMun>\n          <UF>${Client.address.state}</UF>\n          <CEP>${Client.address.CEP}</CEP>\n          <cPais>1058</cPais>\n          <xPais>BRASIL</xPais>\n        </enderDest>\n        <indIEDest>9</indIEDest>\n      </dest>\n\n      <det nItem=\"1\">\n        <prod>\n          <cProd>${Items.SKU}</cProd>\n          <xProd>${Items.name}</xProd>\n          <NCM>00000000</NCM>\n          <CFOP>5102</CFOP>\n          <uCom>UN</uCom>\n          <qCom>${Number(Items.quantity).toFixed(4)}</qCom>\n          <vUnCom>${Number(Items.unit_price).toFixed(4)}</vUnCom>\n          <vProd>${total.toFixed(2)}</vProd>\n          <uTrib>UN</uTrib>\n          <qTrib>${Number(Items.quantity).toFixed(4)}</qTrib>\n          <vUnTrib>${Number(Items.unit_price).toFixed(4)}</vUnTrib>\n          <indTot>1</indTot>\n        </prod>\n\n        <imposto>\n          <vTotTrib>0.00</vTotTrib>\n          <ICMS>\n            <ICMS00>\n              <orig>0</orig>\n              <CST>00</CST>\n              <modBC>3</modBC>\n              <vBC>${total.toFixed(2)}</vBC>\n              <pICMS>0.00</pICMS>\n              <vICMS>0.00</vICMS>\n            </ICMS00>\n          </ICMS>\n        </imposto>\n      </det>\n\n      <total>\n        <ICMSTot>\n          <vBC>${total.toFixed(2)}</vBC>\n          <vICMS>0.00</vICMS>\n          <vICMSDeson>0.00</vICMSDeson>\n          <vFCP>0.00</vFCP>\n          <vBCST>0.00</vBCST>\n          <vST>0.00</vST>\n          <vFCPST>0.00</vFCPST>\n          <vFCPSTRet>0.00</vFCPSTRet>\n          <vProd>${total.toFixed(2)}</vProd>\n          <vFrete>0.00</vFrete>\n          <vSeg>0.00</vSeg>\n          <vDesc>0.00</vDesc>\n          <vII>0.00</vII>\n          <vIPI>0.00</vIPI>\n          <vIPIDevol>0.00</vIPIDevol>\n          <vPIS>0.00</vPIS>\n          <vCOFINS>0.00</vCOFINS>\n          <vOutro>0.00</vOutro>\n          <vNF>${total.toFixed(2)}</vNF>\n          <vTotTrib>0.00</vTotTrib>\n        </ICMSTot>\n      </total>\n\n      <transp>\n        <modFrete>9</modFrete>\n      </transp>\n\n      <pag>\n        <detPag>\n          <tPag>99</tPag>\n          <vPag>${total.toFixed(2)}</vPag>\n        </detPag>\n      </pag>\n\n    </infNFe>\n  </NFe>\n</nfeProc>`;\n\nreturn [\n  {\n    json: {\n      client: Client,\n      items: Items,\n      total: total,\n      xml: xml\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1648,
+        64
+      ],
+      "id": "75de5e07-e43c-44fc-9d57-6f7ac5ff5460",
+      "name": "Gerar NF-e"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.mercadolibre.com/shipments/{{ $('Detalhes da compra').item.json.id }}/invoice_data",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "siteId",
+              "value": "MLB"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer $ACCESS_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=application/xml",
+        "body": "={{ $json.xml }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1840,
+        64
+      ],
+      "id": "2295c319-23be-4f72-b258-1ef359c2da72",
+      "name": "Enviar NF-e",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "QuC3vN5wmybOEKlE",
+          "name": "Bearer Auth account 2"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "notes": "Não vai funcionar porque estamos no ambiente de homologação."
+    },
+    {
+      "parameters": {
+        "fromEmail": "gabriiel.rlins@gmail.com",
+        "toEmail": "work.eolins@gmail.com",
+        "subject": "Recebido pelo mercado livre",
+        "emailFormat": "text",
+        "text": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1056,
+        -48
+      ],
+      "id": "408e5125-f622-4c65-96ec-3929654c84d5",
+      "name": "Envia um email de ordem adicionada",
+      "webhookId": "4f19a38b-a4aa-4934-bc3e-4c711cca79d6",
+      "credentials": {
+        "smtp": {
+          "id": "iRup75LNrl5IDArZ",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "Pending",
+        "key": "=pending:{{ $json.body.resource.split(\"/\").pop() }}",
+        "keyType": "string",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "7433f122-e431-409a-b0fc-f250795b78c4",
+      "name": "Verifica lista de Pendencias",
+      "credentials": {
+        "redis": {
+          "id": "0tr7eaNDVyRZU7kL",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e660b2b9-e928-4c02-95c7-367919c4ca0a",
+              "leftValue": "={{ $json.Pending }}",
+              "rightValue": "={{null}}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "f30c0d7c-b002-47fa-b17b-78ebbcdfc4bb",
+      "name": "Se não há pendencias nesse id, procegue"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "=pending:{{ $json.body.resource.split(\"/\").pop() }}",
+        "value": "1",
+        "keyType": "string"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        672,
+        -48
+      ],
+      "id": "531e6207-8718-46eb-8b2b-2a42db57d193",
+      "name": "Dá uma chave ao processo",
+      "credentials": {
+        "redis": {
+          "id": "0tr7eaNDVyRZU7kL",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "orders_list",
+        "messageData": "={{ $('Recebe novas ordens').item.json.body.resource.split(\"/\").pop() }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        880,
+        -48
+      ],
+      "id": "dc3cc4cf-5f70-4b80-a54b-0299c9ffa916",
+      "name": "Adiciona a lista",
+      "credentials": {
+        "redis": {
+          "id": "0tr7eaNDVyRZU7kL",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "llen",
+        "list": "orders_list"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        224,
+        208
+      ],
+      "id": "beb5f6db-850f-4761-973c-5c2a649df3bd",
+      "name": "Verifica a lista de pendências",
+      "credentials": {
+        "redis": {
+          "id": "0tr7eaNDVyRZU7kL",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "orders_list"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        240
+      ],
+      "id": "f7e75488-2845-4ec3-a1a0-197035055dc8",
+      "name": "Redis",
+      "credentials": {
+        "redis": {
+          "id": "0tr7eaNDVyRZU7kL",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": [
+          "POST"
+        ],
+        "path": "mercadolivre",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "cd429051-5072-4dd2-bad6-745a47e65586",
+      "name": "Recebe novas ordens",
+      "webhookId": "ede6a6f1-259f-4145-89c2-14272baa2917"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "10c8cdc1-405d-45fb-ae7d-6829ee499aa0",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "=ready_to_ship",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1232,
+        144
+      ],
+      "id": "abcf4312-de4e-4a21-8cd3-53006baebd9c",
+      "name": "Autorizado a NF-e"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 3
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        208
+      ],
+      "id": "acd1579b-59a9-490d-b690-d93b24a93ba8",
+      "name": "Tenta emitir nota a cada 3m"
+    },
+    {
+      "parameters": {
+        "fromEmail": "gabriiel.rlins@gmail.com",
+        "toEmail": "work.eolins@gmail.com",
+        "subject": "Nó retornou um erro ao importar o XML da NF-e.",
+        "emailFormat": "text",
+        "text": "Ocorreu um erro em {}.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2064,
+        160
+      ],
+      "id": "de061c26-1343-4e8c-98d7-c4d217d41778",
+      "name": "Reporta o erro",
+      "webhookId": "b9cd0e80-22b5-4e33-83ab-832d47c6cb42",
+      "credentials": {
+        "smtp": {
+          "id": "iRup75LNrl5IDArZ",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Há pendências": {
+      "main": [
+        [
+          {
+            "node": "Pegar ordem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pegar ordem": {
+      "main": [
+        [
+          {
+            "node": "Detalhes da compra",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detalhes da compra": {
+      "main": [
+        []
+      ]
+    },
+    "Detalhes de envio": {
+      "main": [
+        [
+          {
+            "node": "Autorizado a NF-e",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dados pessoais para NF": {
+      "main": [
+        [
+          {
+            "node": "Gerar NF-e",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar NF-e": {
+      "main": [
+        [
+          {
+            "node": "Enviar NF-e",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifica lista de Pendencias": {
+      "main": [
+        [
+          {
+            "node": "Se não há pendencias nesse id, procegue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Se não há pendencias nesse id, procegue": {
+      "main": [
+        [
+          {
+            "node": "Dá uma chave ao processo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dá uma chave ao processo": {
+      "main": [
+        [
+          {
+            "node": "Adiciona a lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adiciona a lista": {
+      "main": [
+        [
+          {
+            "node": "Envia um email de ordem adicionada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verifica a lista de pendências": {
+      "main": [
+        [
+          {
+            "node": "Há pendências",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar NF-e": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Reporta o erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recebe novas ordens": {
+      "main": [
+        [
+          {
+            "node": "Verifica lista de Pendencias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Autorizado a NF-e": {
+      "main": [
+        [
+          {
+            "node": "Dados pessoais para NF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tenta emitir nota a cada 3m": {
+      "main": [
+        [
+          {
+            "node": "Verifica a lista de pendências",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v0",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "timeSavedPerExecution": 10,
+    "errorWorkflow": "NreZKjenOIPmmq5t"
+  },
+  "versionId": "a8502005-4e73-413e-b3b9-35e434b5dc1d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "5a17ce8df1f9c665ae64719b7ccfbbc98f0dce0c9c253aab675af707fedb2eb3"
+  },
+  "nodeGroups": [],
+  "id": "aPyzThEHKAxPBra3",
+  "tags": []
+}
